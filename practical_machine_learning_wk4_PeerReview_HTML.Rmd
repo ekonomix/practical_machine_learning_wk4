@@ -1,0 +1,141 @@
+---
+title: "Untitled"
+author: "ekonomix"
+date: "25 January 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Executive Summary
+We have data from 4 sensors placed on participants bodies and object (belt, forearm, arm and the dumbell); 
+they measure how the different body parts and the dumbell itself are moving as the participant is attempting to lift it.
+
+Participants were asked to lift the dumbell in 5 different ways, 1 correct way and 4 'wrong' ways.
+Our aim is to distinguish "how well" the exercise is taking place, hence using the sensor data distinguish between these different types of lift.
+
+## load some libraries we are likely to be using
+```{r}
+library(caret)
+library(ggplot2)
+```
+
+## Get data - download as csv and load
+
+```{r}
+Urla <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+Urlb <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(Urla), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(Urlb), na.strings=c("NA","#DIV/0!",""))
+```
+
+## take a look at the data
+```{r}
+dim(training)
+#str(training) # not shown in output 
+dim(testing)
+#str(testing) # not shown in output 
+```
+it looks like the first 7 variables have no predictive value for this exercise
+
+
+## get rid of variables with many NAs and variables expected to have no predictive value in this case
+
+```{r}
+NA_Count = sapply(1:dim(training)[2],function(x)sum(is.na(training[,x])))
+NA_Count
+NA_list = which(NA_Count>0)
+
+```
+
+## modify the training and test data sets to remove unnecessary columns and transforming the class into a factor
+
+```{r}
+training_clean <- training[,-NA_list]
+training_clean <- training_clean[,-c(1:7)]
+training_clean$classe = factor(training_clean$classe)
+
+testing_clean <- testing[,-NA_list]
+testing_clean <- testing_clean[,-c(1:7)]
+
+
+# head(testing_clean) # not shown in output 
+
+```
+
+## build models and deciding which works best
+## this is a classification problem, and we'll try random forest and classification tree
+
+```{r}
+set.seed(2501)
+```
+
+Random Forest
+
+```{r}
+rfFit <- train(classe ~ ., method = "rf", data = training_clean, importance = T, trControl = trainControl(method = "cv", number = 3))
+
+
+#training performance
+training_rfpred <- predict(rfFit, newdata=training_clean)
+rf_confusion <-confusionMatrix(training_rfpred,training_clean$classe)
+rf_confusion
+#looks good
+
+```
+
+##Random Forest Results look good!
+
+Classification Tree
+
+```{r}
+
+rpartFit <- train(classe ~ ., method = "rpart", data = training_clean)
+
+#training performance
+training_rpartpred <- predict(rpartFit, newdata=training_clean)
+confusionMatrix(training_rpartpred,training_clean$classe)
+#not as good
+
+```
+
+##Regressions trees are nto as good as random forest here.
+
+## Hence Random Forest is Chosen! 
+
+## important variables, expected error (1-accuracy) and predictions for test data:
+```{r}
+
+#Important Variables
+imp_rf <- varImp(rfFit)$importance
+varImpPlot(rfFit$finalModel, sort = TRUE, type = 1, pch = 19, col = 1, cex = 1, main = "Importance of the Predictors")
+
+#accuracy and expected error
+attributes(rf_confusion)
+rf_confusion$overall
+rf_confusion$overall['Accuracy']
+rf_confusion$overall['AccuracyUpper']
+rf_confusion$overall['AccuracyLower']
+
+
+testing_rfpred <- predict(rfFit, newdata=testing_clean)
+testing_rfpred
+```
+
+##writing out the predictions
+
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("./practical_ml_wk4_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(testing_rfpred)
+
+testing_rfpred
+```
